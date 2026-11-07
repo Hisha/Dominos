@@ -19,12 +19,55 @@ local menuButtons
 do
 	local loadButtons = function(...)
 		menuButtons = {}
+		local discovered = {}
+		local isMenuButton = {}
 
 		for i = 1, select("#", ...) do
 			local b = select(i, ...)
 			local name = b:GetName()
 			if name and name:match("(%w+)MicroButton$") then
-				table.insert(menuButtons, b)
+				table.insert(discovered, b)
+				isMenuButton[b] = true
+			end
+		end
+
+		-- GetChildren() normally returns the stock buttons in layout order, but
+		-- native UI extensions are created later and therefore appear at the end
+		-- of that list.  Follow their existing anchor chain so an extension
+		-- inserted between two stock buttons keeps that position under Dominos.
+		local predecessor = {}
+		for _, b in ipairs(discovered) do
+			for point = 1, b:GetNumPoints() do
+				local _, relativeTo = b:GetPoint(point)
+				if isMenuButton[relativeTo] then
+					predecessor[b] = relativeTo
+					break
+				end
+			end
+		end
+
+		local added = {}
+		local remaining = #discovered
+		while remaining > 0 do
+			local progressed
+			for _, b in ipairs(discovered) do
+				if not added[b] and (not predecessor[b] or added[predecessor[b]]) then
+					table.insert(menuButtons, b)
+					added[b] = true
+					remaining = remaining - 1
+					progressed = true
+				end
+			end
+
+			-- Preserve discovery order for malformed or cyclic third-party anchors.
+			if not progressed then
+				for _, b in ipairs(discovered) do
+					if not added[b] then
+						table.insert(menuButtons, b)
+						added[b] = true
+						remaining = remaining - 1
+					end
+				end
 			end
 		end
 	end
